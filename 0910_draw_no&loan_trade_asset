@@ -1,0 +1,581 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/Jaylir7/colab/blob/main/0910_draw_no%26loan_trade_asset\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "# 0910"
+      ],
+      "metadata": {
+        "id": "nxPhXJ6RWjv8"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "from statsmodels.stats.outliers_influence import variance_inflation_factor\n",
+        "import pandas as pd\n",
+        "import numpy as np\n",
+        "from sklearn.model_selection import train_test_split, GridSearchCV\n",
+        "from sklearn.tree import DecisionTreeClassifier\n",
+        "from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc, classification_report"
+      ],
+      "metadata": {
+        "id": "QsX4xcwamgIN"
+      },
+      "execution_count": 54,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# 讀取 Excel 檔案\n",
+        "df = pd.read_excel(\"YN.xlsx\", sheet_name=\"YN\")\n",
+        "# 檢視所有欄位與資料型態\n",
+        "print(df.info())\n",
+        "# 檢視每一欄的唯一值\n",
+        "for col in df.columns:\n",
+        "    print(col)\n",
+        "    print(set(df[col]))\n",
+        "    print(\"****************************************************************************************************************\")"
+      ],
+      "metadata": {
+        "collapsed": true,
+        "id": "Mn2_lzJVgPSh"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "data = df.drop(['draw_id','active_months','first_draw','last_draw','近三月平均總資產','存款無證券','證券當月存款','appl_amt','approve_amt','month_num','marketing_proj_cd','total_assets'],axis=1)\n",
+        "data['Y/N'] = data['Y/N'].map({'N': 0, 'Y': 1}).astype(int)\n",
+        "# 把所有 NaN 直接填 0\n",
+        "data = data.fillna(0)\n",
+        "# 確認是否還有 NaN\n",
+        "print(data.isna().sum())\n",
+        "print(data)\n"
+      ],
+      "metadata": {
+        "collapsed": true,
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "cRL4-k3KhSpk",
+        "outputId": "2fe22663-41ff-49d2-fcb9-c6e286126600"
+      },
+      "execution_count": 56,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "draw_year    0\n",
+            "duration     0\n",
+            "資產等級         0\n",
+            "總存款(含證券)     0\n",
+            "age_num      0\n",
+            "sum          0\n",
+            "inflow       0\n",
+            "infreq       0\n",
+            "outflow      0\n",
+            "outfreq      0\n",
+            "Y/N          0\n",
+            "dtype: int64\n",
+            "      draw_year  duration  資產等級     總存款(含證券)  age_num        sum     inflow  \\\n",
+            "0             3       213    11  8092833.877       49        0.0        0.0   \n",
+            "1             1        99     1    85647.644       60        0.0        0.0   \n",
+            "2            46       169     8  5090490.743       55        0.0        0.0   \n",
+            "3            11       268     1   868041.000       52        0.0        0.0   \n",
+            "4             3       229     6  2982853.300       52 -5715928.0 -6953637.0   \n",
+            "...         ...       ...   ...          ...      ...        ...        ...   \n",
+            "3776          2       361    11  8903182.347       52   511192.0   -10378.0   \n",
+            "3777         17       372     7  3458643.614       57        0.0        0.0   \n",
+            "3778         70       122     2   944479.031       33    -8883.0  -230495.0   \n",
+            "3779          2       248     5  2658244.391       53  -425879.0  -924793.0   \n",
+            "3780          1        76     2   917339.264       52        0.0        0.0   \n",
+            "\n",
+            "      infreq    outflow  outfreq  Y/N  \n",
+            "0        0.0        0.0      0.0    0  \n",
+            "1        0.0        0.0      0.0    0  \n",
+            "2        0.0        0.0      0.0    0  \n",
+            "3        0.0        0.0      0.0    0  \n",
+            "4       12.0  1237709.0      4.0    0  \n",
+            "...      ...        ...      ...  ...  \n",
+            "3776     1.0   521570.0      4.0    1  \n",
+            "3777     0.0        0.0      0.0    1  \n",
+            "3778     5.0   221612.0      6.0    1  \n",
+            "3779    10.0   498914.0      1.0    1  \n",
+            "3780     0.0        0.0      0.0    1  \n",
+            "\n",
+            "[3781 rows x 11 columns]\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "y = data['Y/N']       #1維Series\n",
+        "X = data.drop(columns=['Y/N'])#只留特徵\n",
+        "X_train, X_test, y_train, y_test = train_test_split(\n",
+        "    X, y, test_size=0.25, random_state=3, stratify=y)\n",
+        "print(X_train.shape, X_test.shape)\n",
+        "print(y_train.value_counts(normalize=True))  # 觀察比例"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "T9-Sp6BHlALN",
+        "outputId": "8de59f2d-4053-4737-8535-ed08dede8012"
+      },
+      "execution_count": 57,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "(2835, 10) (946, 10)\n",
+            "Y/N\n",
+            "0    0.907231\n",
+            "1    0.092769\n",
+            "Name: proportion, dtype: float64\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "vif = pd.DataFrame()\n",
+        "vif[\"Feature\"] = X_train.columns\n",
+        "vif[\"VIF\"] = [variance_inflation_factor(X_train.values, i) for i in range(X_train.shape[1])]\n",
+        "print(vif.sort_values(\"VIF\", ascending=False))"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "c9wvBunm36RU",
+        "outputId": "12cde6d8-f893-4cc4-c181-feb411f8172c"
+      },
+      "execution_count": 58,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "     Feature       VIF\n",
+            "6     inflow       inf\n",
+            "5        sum       inf\n",
+            "8    outflow       inf\n",
+            "4    age_num  6.053133\n",
+            "1   duration  5.698589\n",
+            "2       資產等級  3.927605\n",
+            "9    outfreq  3.725391\n",
+            "7     infreq  3.236090\n",
+            "3   總存款(含證券)  2.460355\n",
+            "0  draw_year  1.383743\n"
+          ]
+        },
+        {
+          "output_type": "stream",
+          "name": "stderr",
+          "text": [
+            "/usr/local/lib/python3.12/dist-packages/statsmodels/stats/outliers_influence.py:197: RuntimeWarning: divide by zero encountered in scalar divide\n",
+            "  vif = 1. / (1. - r_squared_i)\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "corr = X_train.corr()\n",
+        "# 查看全部相關係數\n",
+        "print(corr)\n",
+        "\n"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "MLJ1Z4Qx40yJ",
+        "outputId": "cf0e074c-2948-4c09-edfc-57b40e6379fd"
+      },
+      "execution_count": 59,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "           draw_year  duration      資產等級  總存款(含證券)   age_num       sum  \\\n",
+            "draw_year   1.000000  0.112409  0.085477  0.084628  0.106965  0.014383   \n",
+            "duration    0.112409  1.000000  0.335715  0.234068  0.571262  0.018834   \n",
+            "資產等級        0.085477  0.335715  1.000000  0.742814  0.315207  0.055680   \n",
+            "總存款(含證券)    0.084628  0.234068  0.742814  1.000000  0.276307  0.033966   \n",
+            "age_num     0.106965  0.571262  0.315207  0.276307  1.000000  0.027370   \n",
+            "sum         0.014383  0.018834  0.055680  0.033966  0.027370  1.000000   \n",
+            "inflow     -0.039137 -0.021066 -0.068255 -0.093497 -0.073777 -0.019019   \n",
+            "infreq      0.045917  0.005146 -0.005597  0.002028  0.040688 -0.102498   \n",
+            "outflow     0.040827  0.023768  0.076148  0.097470  0.077004  0.180340   \n",
+            "outfreq     0.039862  0.015552  0.020298  0.014448  0.059218  0.029699   \n",
+            "\n",
+            "             inflow    infreq   outflow   outfreq  \n",
+            "draw_year -0.039137  0.045917  0.040827  0.039862  \n",
+            "duration  -0.021066  0.005146  0.023768  0.015552  \n",
+            "資產等級      -0.068255 -0.005597  0.076148  0.020298  \n",
+            "總存款(含證券)  -0.093497  0.002028  0.097470  0.014448  \n",
+            "age_num   -0.073777  0.040688  0.077004  0.059218  \n",
+            "sum       -0.019019 -0.102498  0.180340  0.029699  \n",
+            "inflow     1.000000 -0.592424 -0.986856 -0.674261  \n",
+            "infreq    -0.592424  1.000000  0.566250  0.802218  \n",
+            "outflow   -0.986856  0.566250  1.000000  0.668126  \n",
+            "outfreq   -0.674261  0.802218  0.668126  1.000000  \n",
+            "             inflow   outflow       sum\n",
+            "draw_year -0.039137  0.040827  0.014383\n",
+            "duration  -0.021066  0.023768  0.018834\n",
+            "資產等級      -0.068255  0.076148  0.055680\n",
+            "總存款(含證券)  -0.093497  0.097470  0.033966\n",
+            "age_num   -0.073777  0.077004  0.027370\n",
+            "sum       -0.019019  0.180340  1.000000\n",
+            "inflow     1.000000 -0.986856 -0.019019\n",
+            "infreq    -0.592424  0.566250 -0.102498\n",
+            "outflow   -0.986856  1.000000  0.180340\n",
+            "outfreq   -0.674261  0.668126  0.029699\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# 只看 inflow / outflow / sum 的關係\n",
+        "print(corr[[\"inflow\", \"outflow\", \"sum\"]])"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "-HXG8VTQ5Axn",
+        "outputId": "70c2153e-a6ac-4dfc-9046-a88b17049611"
+      },
+      "execution_count": 61,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "             inflow   outflow       sum\n",
+            "draw_year -0.039137  0.040827  0.014383\n",
+            "duration  -0.021066  0.023768  0.018834\n",
+            "資產等級      -0.068255  0.076148  0.055680\n",
+            "總存款(含證券)  -0.093497  0.097470  0.033966\n",
+            "age_num   -0.073777  0.077004  0.027370\n",
+            "sum       -0.019019  0.180340  1.000000\n",
+            "inflow     1.000000 -0.986856 -0.019019\n",
+            "infreq    -0.592424  0.566250 -0.102498\n",
+            "outflow   -0.986856  1.000000  0.180340\n",
+            "outfreq   -0.674261  0.668126  0.029699\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "## cart挑選參數\n",
+        "#Tunning\n",
+        "dt_candidates = [{'max_depth':[4,6,8], 'min_samples_split':[20,40,60],\n",
+        "                    'min_samples_leaf':[10,30,50]}]\n",
+        "tunDT = GridSearchCV(estimator = DecisionTreeClassifier(random_state=3, class_weight=\"balanced\"),\n",
+        "                     param_grid = dt_candidates, cv = 3)\n",
+        "tunDT.fit(X_train,y_train)\n",
+        "print('\\nBest parameters using DT:',tunDT.best_params_)"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "KqxjpVzVlB-9",
+        "outputId": "9495014f-db31-4656-f75b-5fe27ee1380c"
+      },
+      "execution_count": 51,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "\n",
+            "Best parameters using DT: {'max_depth': 8, 'min_samples_leaf': 10, 'min_samples_split': 20}\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# 1) 最終模型（用最佳參數、加上 class_weight）\n",
+        "DT = DecisionTreeClassifier(\n",
+        "    criterion='gini',\n",
+        "    max_depth=tunDT.best_estimator_.max_depth,\n",
+        "    min_samples_split=tunDT.best_estimator_.min_samples_split,\n",
+        "    min_samples_leaf=tunDT.best_estimator_.min_samples_leaf,\n",
+        "    class_weight=\"balanced\",              # 針對不平衡\n",
+        "    random_state=3\n",
+        ")\n",
+        "DT_bank = DT.fit(X_train, y_train.values.ravel())  # y 保證為 1d\n"
+      ],
+      "metadata": {
+        "id": "H7CtBay3p7Lv"
+      },
+      "execution_count": 52,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# 2) 變數重要性\n",
+        "dt_imp = (pd.DataFrame({'Feature': X_train.columns,\n",
+        "                        'Importance': DT_bank.feature_importances_})\n",
+        "          .sort_values('Importance', ascending=False))\n",
+        "print(dt_imp.head(20))\n"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "B_qx6LMByiMS",
+        "outputId": "9e73ebdb-b68b-4f27-f890-bbc57b966e12"
+      },
+      "execution_count": 53,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "     Feature  Importance\n",
+            "2   總存款(含證券)    0.526837\n",
+            "1   duration    0.115836\n",
+            "6     infreq    0.110342\n",
+            "3    age_num    0.076888\n",
+            "4        sum    0.059118\n",
+            "7    outflow    0.043377\n",
+            "5     inflow    0.035980\n",
+            "0  draw_year    0.031532\n",
+            "8    outfreq    0.000090\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# 3) 訓練集評估\n",
+        "train_pred = DT_bank.predict(X_train)\n",
+        "print(pd.crosstab(pd.Series(y_train.values.ravel(), name='true'),\n",
+        "                  pd.Series(train_pred, name='pred')))\n",
+        "print(\"Train Acc:\", accuracy_score(y_train.values.ravel(), train_pred))\n",
+        "print(\"Train Rec:\", recall_score(y_train.values.ravel(), train_pred, pos_label=1))\n",
+        "print(\"Train Pre:\", precision_score(y_train.values.ravel(), train_pred, pos_label=1))\n",
+        "print(\"Train F1 :\", f1_score(y_train.values.ravel(), train_pred, pos_label=1))\n",
+        "print(\"********************************************\")\n",
+        "\n"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "_z7qxgbbwsgh",
+        "outputId": "0d1872b4-91c0-492a-b460-1805be037a32"
+      },
+      "execution_count": 46,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "pred     0    1\n",
+            "true           \n",
+            "0     2298  274\n",
+            "1       37  226\n",
+            "Train Acc: 0.890299823633157\n",
+            "Train Rec: 0.8593155893536122\n",
+            "Train Pre: 0.452\n",
+            "Train F1 : 0.5923984272608126\n",
+            "********************************************\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# 4) 測試集評估\n",
+        "test_pred = DT_bank.predict(X_test)\n",
+        "print(pd.crosstab(pd.Series(y_test.values.ravel(), name='true'),\n",
+        "                  pd.Series(test_pred, name='pred')))\n",
+        "print(\"Test  Acc:\", accuracy_score(y_test.values.ravel(), test_pred))\n",
+        "print(\"Test  Rec:\", recall_score(y_test.values.ravel(), test_pred, pos_label=1))\n",
+        "print(\"Test  Pre:\", precision_score(y_test.values.ravel(), test_pred, pos_label=1))\n",
+        "print(\"Test  F1 :\", f1_score(y_test.values.ravel(), test_pred, pos_label=1))\n",
+        "print(classification_report(y_test.values.ravel(), test_pred, digits=3))\n",
+        "print(\"********************************************\")"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "_KwDBMGoyl-I",
+        "outputId": "aceb62ec-9509-40f9-d89b-24b376aa278c"
+      },
+      "execution_count": 47,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "pred    0    1\n",
+            "true          \n",
+            "0     743  115\n",
+            "1      21   67\n",
+            "Test  Acc: 0.8562367864693446\n",
+            "Test  Rec: 0.7613636363636364\n",
+            "Test  Pre: 0.36813186813186816\n",
+            "Test  F1 : 0.4962962962962963\n",
+            "              precision    recall  f1-score   support\n",
+            "\n",
+            "           0      0.973     0.866     0.916       858\n",
+            "           1      0.368     0.761     0.496        88\n",
+            "\n",
+            "    accuracy                          0.856       946\n",
+            "   macro avg      0.670     0.814     0.706       946\n",
+            "weighted avg      0.916     0.856     0.877       946\n",
+            "\n",
+            "********************************************\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# 5) ROC / AUC（使用已訓練好的 DT_bank，不要重訓）\n",
+        "test_prob = DT_bank.predict_proba(X_test)[:, 1]\n",
+        "fpr_DT, tpr_DT, thr_DT = roc_curve(y_test.values.ravel(), test_prob, pos_label=1)\n",
+        "roc_auc_DT = auc(fpr_DT, tpr_DT)\n",
+        "print(\"AUC:\", roc_auc_DT)\n"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "g2pOZGrMyn69",
+        "outputId": "6a6dadba-e339-4106-f846-c781d0b643ee"
+      },
+      "execution_count": 48,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "AUC: 0.8640668044077136\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# 1) 參數搜尋（加入 class_weight）\n",
+        "rf_grid = {\n",
+        "    \"n_estimators\": [100, 150, 200, 250, 300],\n",
+        "    \"max_depth\": [4, 6, 8],\n",
+        "    \"max_features\": [min(8, X_train.shape[1]), min(10, X_train.shape[1]), min(12, X_train.shape[1])],\n",
+        "    \"min_samples_split\": [20, 40, 60],\n",
+        "    \"min_samples_leaf\": [10, 30, 50],\n",
+        "}\n",
+        "rf_base = RandomForestClassifier(\n",
+        "    random_state=3, class_weight=\"balanced\", n_jobs=-1, bootstrap=True, oob_score=False\n",
+        ")\n",
+        "rf_search = GridSearchCV(rf_base, rf_grid, cv=3, n_jobs=-1)\n",
+        "rf_search.fit(X_train, y_train.values.ravel())\n",
+        "print(\"Best RF params:\", rf_search.best_params_)\n",
+        "\n",
+        "# 2) 最終模型（用最佳參數重建，保持 class_weight）\n",
+        "best = rf_search.best_params_\n",
+        "rf = RandomForestClassifier(\n",
+        "    n_estimators=best[\"n_estimators\"],\n",
+        "    max_depth=best[\"max_depth\"],\n",
+        "    max_features=best[\"max_features\"],\n",
+        "    min_samples_split=best[\"min_samples_split\"],\n",
+        "    min_samples_leaf=best[\"min_samples_leaf\"],\n",
+        "    class_weight=\"balanced\",\n",
+        "    random_state=3,\n",
+        "    n_jobs=-1,\n",
+        "    bootstrap=True\n",
+        ")\n",
+        "rf.fit(X_train, y_train.values.ravel())\n",
+        "\n",
+        "# 3) 特徵重要性\n",
+        "rf_imp = (pd.DataFrame({\"Feature\": X_train.columns, \"Importance\": rf.feature_importances_})\n",
+        "          .sort_values(\"Importance\", ascending=False))\n",
+        "print(rf_imp.head(20))\n",
+        "\n",
+        "# 4) 訓練集評估\n",
+        "train_pred = rf.predict(X_train)\n",
+        "print(pd.crosstab(pd.Series(y_train.values.ravel(), name=\"true\"),\n",
+        "                  pd.Series(train_pred, name=\"pred\")))\n",
+        "print(\"Train Acc:\", accuracy_score(y_train.values.ravel(), train_pred))\n",
+        "print(\"Train Rec:\", recall_score(y_train.values.ravel(), train_pred, pos_label=1))\n",
+        "print(\"Train Pre:\", precision_score(y_train.values.ravel(), train_pred, pos_label=1))\n",
+        "print(\"Train F1 :\", f1_score(y_train.values.ravel(), train_pred, pos_label=1))\n",
+        "\n",
+        "# 5) 測試集評估\n",
+        "test_pred = rf.predict(X_test)\n",
+        "print(pd.crosstab(pd.Series(y_test.values.ravel(), name=\"true\"),\n",
+        "                  pd.Series(test_pred, name=\"pred\")))\n",
+        "print(\"Test  Acc:\", accuracy_score(y_test.values.ravel(), test_pred))\n",
+        "print(\"Test  Rec:\", recall_score(y_test.values.ravel(), test_pred, pos_label=1))\n",
+        "print(\"Test  Pre:\", precision_score(y_test.values.ravel(), test_pred, pos_label=1))\n",
+        "print(\"Test  F1 :\", f1_score(y_test.values.ravel(), test_pred, pos_label=1))\n",
+        "print(classification_report(y_test.values.ravel(), test_pred, digits=3))\n",
+        "\n",
+        "# 6) ROC / AUC（測試集）\n",
+        "test_prob = rf.predict_proba(X_test)[:, 1]\n",
+        "fpr_rf, tpr_rf, thr_rf = roc_curve(y_test.values.ravel(), test_prob, pos_label=1)\n",
+        "roc_auc_rf = auc(fpr_rf, tpr_rf)\n",
+        "print(\"RF Test AUC:\", roc_auc_rf)\n"
+      ],
+      "metadata": {
+        "id": "2YoGf4781V0j"
+      },
+      "execution_count": null,
+      "outputs": []
+    }
+  ],
+  "metadata": {
+    "colab": {
+      "name": "歡迎使用 Colab",
+      "provenance": [],
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "display_name": "Python 3",
+      "name": "python3"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 0
+}
